@@ -14,8 +14,10 @@ from utils import CTCLabelConverter, AttnLabelConverter, Averager
 from dataset import hierarchical_dataset, AlignCollate
 from model import Model
 
+
 def validation(model, criterion, evaluation_loader, converter, opt, device):
     """ validation or evaluation """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     n_correct = 0
     norm_ED = 0
     length_of_data = 0
@@ -31,6 +33,8 @@ def validation(model, criterion, evaluation_loader, converter, opt, device):
         text_for_pred = torch.LongTensor(batch_size, opt.batch_max_length + 1).fill_(0).to(device)
 
         text_for_loss, length_for_loss = converter.encode(labels, batch_max_length=opt.batch_max_length)
+        text_for_loss = text_for_loss.to(device)
+        length_for_loss = length_for_loss.to(device)
         
         start_time = time.time()
         if 'CTC' in opt.Prediction:
@@ -38,9 +42,11 @@ def validation(model, criterion, evaluation_loader, converter, opt, device):
             forward_time = time.time() - start_time
 
             # Calculate evaluation loss for CTC decoder.
-            preds_size = torch.IntTensor([preds.size(1)] * batch_size)
+            preds_size = torch.IntTensor([preds.size(1)] * batch_size).to(device)
             # permute 'preds' to use CTCloss format
-            cost = criterion(preds.log_softmax(2).permute(1, 0, 2), text_for_loss, preds_size, length_for_loss)
+            log_probs = preds.log_softmax(2).permute(1, 0, 2)
+            cost = criterion(log_probs, text_for_loss, preds_size, length_for_loss)
+
 
             if opt.decode == 'greedy':
                 # Select max probabilty (greedy decoding) then decode index to character
